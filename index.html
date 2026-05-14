@@ -1,0 +1,2316 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<title>LIQUID CHROME / drawing tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&family=Roboto+Flex:opsz,slnt,wght,wdth@8..144,-10..0,100..1000,25..151&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --mono: 'JetBrains Mono', ui-monospace, 'Menlo', monospace;
+    --serif: 'Instrument Serif', 'Times New Roman', serif;
+    --sans: 'Roboto Flex', system-ui, sans-serif;
+    --radius: 2px;
+    --hairline: 1px;
+    --dur: 180ms;
+    --ease: cubic-bezier(.2,.7,.2,1);
+  }
+  html[data-theme="dark"] {
+    --bg:        #0b0c0e;
+    --bg-2:      #111316;
+    --bg-panel:  rgba(14,16,19, 0.78);
+    --bg-panel-solid: #0e1013;
+    --fg:        #e9e9e9;
+    --fg-dim:    #8a8d92;
+    --fg-mute:   #4d5258;
+    --line:      #232629;
+    --line-2:    #2e3236;
+    --accent:    #c8cdd2;
+    --accent-2:  #ffffff;
+    --danger:    #ff5b5b;
+    --shadow:    0 4px 24px rgba(0,0,0,.5);
+  }
+  html[data-theme="light"] {
+    --bg:        #f3f1ec;
+    --bg-2:      #eae7df;
+    --bg-panel:  rgba(247,245,240, 0.88);
+    --bg-panel-solid: #f7f5f0;
+    --fg:        #14171a;
+    --fg-dim:    #5b6066;
+    --fg-mute:   #9a9ea4;
+    --line:      #d6d2c8;
+    --line-2:    #c4bfb3;
+    --accent:    #14171a;
+    --accent-2:  #000;
+    --danger:    #c4332b;
+    --shadow:    0 4px 24px rgba(0,0,0,.10);
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:11px;letter-spacing:.02em;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;}
+  body{user-select:none;-webkit-user-select:none;touch-action:none;}
+  button,input,select,textarea{font:inherit;color:inherit}
+  ::selection{background:var(--accent);color:var(--bg)}
+
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:none;touch-action:none;}
+  body[data-tool="text"] #gl{cursor:text}
+  body[data-tool="erase"] #gl{cursor:none}
+
+  /* brush cursor ring */
+  #brush-cursor{
+    position:fixed;pointer-events:none;z-index:25;
+    border-radius:50%;border:1px solid rgba(255,255,255,0.7);
+    box-shadow:0 0 0 1px rgba(0,0,0,0.4);
+    transform:translate(-50%,-50%);
+    transition:width 80ms, height 80ms;
+    mix-blend-mode:difference;
+  }
+  html[data-theme="light"] #brush-cursor{
+    border-color:rgba(0,0,0,0.7);
+    box-shadow:0 0 0 1px rgba(255,255,255,0.4);
+  }
+  body[data-tool="text"] #brush-cursor,
+  body[data-tool="text_active"] #brush-cursor { display:none; }
+
+  /* Top bar */
+  .topbar{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:14px 16px;pointer-events:none;z-index:20;}
+  .topbar > *{pointer-events:auto}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:500;letter-spacing:.18em;font-size:10px;text-transform:uppercase;}
+  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--fg);box-shadow:0 0 12px var(--fg);}
+  .brand small{color:var(--fg-dim);font-weight:400;letter-spacing:.12em;}
+  .brand .ver{font-style:italic;font-family:var(--serif);font-weight:400;letter-spacing:0;color:var(--fg-dim);font-size:13px;margin-left:6px;}
+  .topbar .right{display:flex;gap:8px;align-items:center}
+
+  /* Generic panel */
+  .panel{
+    background:var(--bg-panel);
+    backdrop-filter:blur(20px) saturate(120%);
+    -webkit-backdrop-filter:blur(20px) saturate(120%);
+    border:var(--hairline) solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+  }
+  .panel h3{
+    font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--fg-dim);
+    margin:0 0 10px;font-weight:500;display:flex;align-items:center;gap:8px;
+  }
+  .panel h3::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  /* Left tools dock */
+  .dock-left{
+    position:fixed;top:50%;left:14px;transform:translateY(-50%);
+    display:flex;flex-direction:column;gap:6px;
+    padding:6px;width:44px;
+    z-index:18;
+  }
+  .tool-btn{
+    width:32px;height:32px;border:0;background:transparent;
+    color:var(--fg-dim);display:flex;align-items:center;justify-content:center;
+    border-radius:1px;cursor:pointer;transition:all var(--dur) var(--ease);
+    position:relative;
+  }
+  .tool-btn:hover{color:var(--fg);background:var(--bg-2);}
+  .tool-btn.active{color:var(--accent-2);background:var(--bg-2);}
+  .tool-btn.active::before{
+    content:"";position:absolute;left:-7px;top:50%;transform:translateY(-50%);
+    width:2px;height:14px;background:var(--accent-2);
+  }
+  .tool-btn svg{width:18px;height:18px;display:block;}
+
+  /* Right inspector */
+  .inspector{
+    position:fixed;top:64px;right:14px;width:240px;
+    padding:14px;display:flex;flex-direction:column;gap:14px;
+    z-index:17;max-height:calc(100vh - 130px);overflow:auto;
+  }
+  .inspector::-webkit-scrollbar{width:6px}
+  .inspector::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+  .inspector::-webkit-scrollbar-track{background:transparent}
+  .group{display:flex;flex-direction:column;gap:8px;}
+  .row{display:flex;align-items:center;gap:8px;justify-content:space-between;}
+  .row label{color:var(--fg-dim);font-size:10px;letter-spacing:.08em;text-transform:uppercase;flex-shrink:0;}
+  .row .val{color:var(--fg);font-variant-numeric:tabular-nums;font-size:10px;min-width:36px;text-align:right;}
+
+  /* Slider */
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;flex:1;
+    height:18px;background:transparent;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:1px;background:var(--line-2);
+  }
+  input[type=range]::-moz-range-track{height:1px;background:var(--line-2);border:0;}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;
+    width:9px;height:9px;border-radius:50%;
+    background:var(--fg);margin-top:-4px;
+    border:1px solid var(--bg);
+    box-shadow:0 0 0 1px var(--fg-dim);
+    transition:transform var(--dur) var(--ease);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:9px;height:9px;border-radius:50%;
+    background:var(--fg);border:1px solid var(--bg);
+    box-shadow:0 0 0 1px var(--fg-dim);
+  }
+  input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.4)}
+
+  /* Select */
+  .seg{display:flex;border:1px solid var(--line);border-radius:1px;overflow:hidden;flex:1;}
+  .seg button{
+    flex:1;background:transparent;border:0;color:var(--fg-dim);
+    padding:5px 4px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+    cursor:pointer;border-right:1px solid var(--line);transition:all var(--dur) var(--ease);
+  }
+  .seg button:last-child{border-right:0}
+  .seg button:hover{color:var(--fg)}
+  .seg button.active{background:var(--fg);color:var(--bg);}
+
+  select{
+    background:transparent;border:1px solid var(--line);color:var(--fg);
+    padding:5px 8px;font-size:10px;border-radius:1px;cursor:pointer;
+    appearance:none;-webkit-appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='6' viewBox='0 0 8 6'><path d='M0 0 L4 6 L8 0' fill='%23888'/></svg>");
+    background-repeat:no-repeat;background-position:right 6px center;padding-right:18px;
+    width:100%;
+  }
+
+  /* Matcap grid */
+  .matgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .matcap-tile{
+    aspect-ratio:1;border:1px solid var(--line);border-radius:50%;
+    cursor:pointer;background-size:cover;position:relative;
+    transition:all var(--dur) var(--ease);
+    background-color:var(--bg-2);
+  }
+  .matcap-tile:hover{transform:scale(1.06)}
+  .matcap-tile.active{border-color:var(--fg);box-shadow:0 0 0 2px var(--bg),0 0 0 3px var(--fg);}
+  .matcap-tile.add{display:flex;align-items:center;justify-content:center;color:var(--fg-dim);font-size:18px;font-weight:300;background-color:transparent;border-style:dashed;}
+  .matcap-tile.add:hover{color:var(--fg);}
+
+  /* Buttons */
+  .btn{
+    background:transparent;border:1px solid var(--line);color:var(--fg);
+    padding:7px 10px;border-radius:1px;cursor:pointer;
+    font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    transition:all var(--dur) var(--ease);
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .btn:hover{border-color:var(--fg);}
+  .btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg);}
+  .btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2);}
+  .btn.full{width:100%}
+  .btn.icon{padding:6px;width:30px;height:30px;}
+  .btn.icon svg{width:14px;height:14px}
+  .btn.danger{color:var(--danger);border-color:var(--danger);}
+  .btn.danger:hover{background:var(--danger);color:var(--bg);}
+  .btn.active{background:var(--fg);color:var(--bg);border-color:var(--fg);}
+
+  /* Bottom bar */
+  .bottombar{
+    position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+    display:flex;gap:6px;padding:6px;
+    z-index:18;
+  }
+
+  /* Theme toggle */
+  .theme-tog{
+    width:28px;height:28px;border:1px solid var(--line);background:var(--bg-panel);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    color:var(--fg);border-radius:1px;
+  }
+  .theme-tog svg{width:14px;height:14px}
+
+  /* Text layer */
+  #text-layer{position:fixed;inset:0;pointer-events:none;z-index:15;}
+  .text-item{
+    position:absolute;pointer-events:auto;cursor:move;
+    color:transparent; /* invisible — only contributes to field */
+    -webkit-text-stroke:0;
+    user-select:none;-webkit-user-select:none;
+    transform-origin:0 0;
+    white-space:pre;
+    line-height:1;
+  }
+  .text-item.selected{
+    outline:1px dashed var(--fg);
+    outline-offset:2px;
+    color:transparent;
+  }
+  .text-item .handle{
+    position:absolute;width:10px;height:10px;background:var(--fg);
+    border:1px solid var(--bg);border-radius:50%;
+    top:-6px;left:-6px;cursor:move;
+  }
+  .text-item .resize{
+    position:absolute;width:8px;height:8px;background:var(--bg);
+    border:1px solid var(--fg);
+    bottom:-5px;right:-5px;cursor:nwse-resize;
+  }
+
+  /* Text controls floating panel */
+  .text-controls{
+    position:fixed;bottom:60px;left:14px;
+    width:300px;padding:14px;display:none;flex-direction:column;gap:10px;
+    z-index:19;
+  }
+  .text-controls.visible{display:flex}
+  .text-input{
+    background:transparent;border:1px solid var(--line);color:var(--fg);
+    padding:8px;border-radius:1px;font-family:var(--mono);font-size:11px;
+    width:100%;resize:vertical;min-height:40px;outline:none;
+  }
+  .text-input:focus{border-color:var(--fg);}
+
+  /* Export modal */
+  .modal-bg{
+    position:fixed;inset:0;background:rgba(0,0,0,.6);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    z-index:30;display:none;align-items:center;justify-content:center;
+  }
+  .modal-bg.visible{display:flex}
+  .modal{
+    width:min(420px, 92vw);padding:24px;
+    display:flex;flex-direction:column;gap:14px;
+  }
+  .modal h2{font-family:var(--serif);font-size:24px;font-style:italic;font-weight:400;margin:0;letter-spacing:0;}
+  .modal .close{position:absolute;top:8px;right:8px;}
+  .opt-row{display:flex;flex-direction:column;gap:8px;}
+
+  /* Status */
+  .status{
+    position:fixed;bottom:14px;right:14px;
+    padding:6px 10px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--fg-dim);z-index:16;display:flex;gap:10px;align-items:center;
+  }
+  .status .pulse{width:6px;height:6px;border-radius:50%;background:var(--fg-dim);}
+  .status.live .pulse{background:#3ed27e;animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%{opacity:.3}50%{opacity:1}100%{opacity:.3}}
+
+  /* tag/coord */
+  .coord{
+    position:fixed;top:14px;left:50%;transform:translateX(-50%);
+    color:var(--fg-mute);font-size:9px;letter-spacing:.16em;
+    pointer-events:none;z-index:14;
+  }
+
+  /* mobile */
+  @media (max-width: 720px){
+    .inspector{position:fixed;left:8px;right:8px;width:auto;top:auto;bottom:54px;max-height:50vh;display:none;}
+    .inspector.visible{display:flex}
+    .text-controls{left:8px;right:8px;width:auto;bottom:54px;}
+    .dock-left{top:auto;bottom:54px;left:8px;transform:none;flex-direction:row;width:auto;}
+    .dock-left .tool-btn.active::before{left:50%;top:-7px;transform:translateX(-50%);width:14px;height:2px;}
+    .topbar{padding:10px 12px;}
+    .brand{font-size:9px}
+    .brand .ver{font-size:11px}
+    .coord{display:none}
+    .bottombar{bottom:8px;}
+    .status{bottom:8px;right:8px;}
+  }
+
+  .hidden{display:none !important}
+
+  /* drop zone hint */
+  .dropzone{
+    position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:40;
+    display:none;align-items:center;justify-content:center;
+    font-size:14px;letter-spacing:.2em;text-transform:uppercase;color:#fff;
+    border:2px dashed #fff;
+  }
+  .dropzone.visible{display:flex}
+</style>
+</head>
+<body data-tool="brush">
+
+<div id="brush-cursor"></div>
+
+<canvas id="gl"></canvas>
+
+<div id="text-layer"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    LIQUID CHROME
+    <span class="ver">v1.0</span>
+  </div>
+  <div class="right">
+    <button class="theme-tog" id="theme-tog" title="Toggle theme" aria-label="Toggle theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="5"></circle>
+        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+      </svg>
+    </button>
+    <button class="theme-tog" id="inspector-tog" title="Toggle inspector" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<div class="coord" id="coord">000.0 / 000.0</div>
+
+<aside class="dock-left panel">
+  <button class="tool-btn active" data-tool="brush" title="Brush — B">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M3 21l4-4M7 17l10-10 4 4-10 10H7v-4zM14 6l4 4"/>
+    </svg>
+  </button>
+  <button class="tool-btn" data-tool="text" title="Text — T">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M5 6V4h14v2M12 4v16M9 20h6"/>
+    </svg>
+  </button>
+  <button class="tool-btn" data-tool="erase" title="Erase — E">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M3 17l6-6 7 7-6 6H3v-7zM12 8l4-4 5 5-4 4"/>
+    </svg>
+  </button>
+  <div style="height:1px;background:var(--line);margin:4px 2px"></div>
+  <button class="tool-btn" id="clear-btn" title="Clear — Ctrl+K">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>
+    </svg>
+  </button>
+  <button class="tool-btn" id="undo-btn" title="Undo — Ctrl+Z">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M3 7v6h6M3 13a9 9 0 1 0 3-7"/>
+    </svg>
+  </button>
+</aside>
+
+<aside class="inspector panel" id="inspector">
+  <!-- BRUSH -->
+  <div class="group" data-section="brush">
+    <h3>Brush</h3>
+    <div class="row">
+      <label>Size</label>
+      <input type="range" id="brush-size" min="3" max="120" step="0.5" value="34">
+      <span class="val" id="brush-size-v">34</span>
+    </div>
+    <div class="row">
+      <label>Flow</label>
+      <input type="range" id="brush-flow" min="0.05" max="1" step="0.01" value="0.55">
+      <span class="val" id="brush-flow-v">0.55</span>
+    </div>
+    <div class="row">
+      <label>Taper</label>
+      <div class="seg" id="brush-taper">
+        <button data-v="mono" class="active">mono</button>
+        <button data-v="vel">velocity</button>
+        <button data-v="arc">arc</button>
+      </div>
+    </div>
+    <div class="row" id="row-velscale">
+      <label>Speed</label>
+      <input type="range" id="brush-velscale" min="0.01" max="1" step="0.01" value="0.28">
+      <span class="val" id="brush-velscale-v">.28</span>
+    </div>
+    <div class="row" id="row-arcshape" style="display:none">
+      <label>Shape</label>
+      <input type="range" id="brush-arcshape" min="0.15" max="4" step="0.05" value="1">
+      <span class="val" id="brush-arcshape-v">1.0</span>
+    </div>
+  </div>
+
+  <!-- MATERIAL -->
+  <div class="group" data-section="material">
+    <h3>Material</h3>
+    <div class="row">
+      <label style="flex:1">Source</label>
+      <div class="seg" id="mat-source" style="flex:1.5">
+        <button data-v="matcap" class="active">matcap</button>
+        <button data-v="hdri">hdri</button>
+        <button data-v="cam">camera</button>
+      </div>
+    </div>
+    <div class="matgrid" id="matcap-grid">
+      <!-- populated by JS -->
+    </div>
+    <button class="btn full" id="load-hdri">Load HDRI / Image</button>
+    <input type="file" id="hdri-input" accept="image/*" class="hidden">
+    <div class="row">
+      <label>Reflect</label>
+      <input type="range" id="reflect-strength" min="0" max="1" step="0.01" value="0.55">
+      <span class="val" id="reflect-strength-v">0.55</span>
+    </div>
+    <div class="row">
+      <label>Edge</label>
+      <input type="range" id="edge-soft" min="0.005" max="0.12" step="0.001" value="0.025">
+      <span class="val" id="edge-soft-v">.025</span>
+    </div>
+    <div class="row">
+      <label>Threshold</label>
+      <input type="range" id="threshold" min="0.05" max="0.9" step="0.01" value="0.32">
+      <span class="val" id="threshold-v">.32</span>
+    </div>
+    <div class="row">
+      <label>Emboss</label>
+      <input type="range" id="mat-emboss" min="0" max="1" step="0.01" value="0.5">
+      <span class="val" id="mat-emboss-v">.50</span>
+    </div>
+    <div class="row">
+      <label>Blur</label>
+      <input type="range" id="field-blur" min="0.2" max="8" step="0.1" value="2.2">
+      <span class="val" id="field-blur-v">2.2</span>
+    </div>
+    <div class="row">
+      <label>Tint</label>
+      <input type="range" id="tint" min="0" max="1" step="0.01" value="0">
+      <span class="val" id="tint-v">0.00</span>
+    </div>
+  </div>
+
+  <!-- TEXT (only relevant when text tool active) -->
+  <div class="group" data-section="text" id="group-text" style="display:none">
+    <h3>Text</h3>
+    <div class="row">
+      <label style="flex:1">Family</label>
+      <select id="text-family" style="flex:1.4">
+        <option value="mono">JetBrains Mono</option>
+        <option value="sans">Roboto Flex</option>
+        <option value="serif">Instrument Serif</option>
+      </select>
+    </div>
+    <div class="row" style="gap:4px">
+      <input type="text" id="font-load-input" class="text-input" style="min-height:unset;resize:none;flex:1;padding:5px 7px;font-size:10px" placeholder="Google Font name…">
+      <button class="btn" id="font-load-btn" style="flex-shrink:0;padding:5px 8px">Load</button>
+    </div>
+    <div class="row">
+      <label>Size</label>
+      <input type="range" id="text-size" min="20" max="320" step="1" value="120">
+      <span class="val" id="text-size-v">120</span>
+    </div>
+    <div class="row">
+      <label>Weight</label>
+      <input type="range" id="text-weight" min="100" max="1000" step="10" value="700">
+      <span class="val" id="text-weight-v">700</span>
+    </div>
+    <div class="row">
+      <label>Slant</label>
+      <input type="range" id="text-slant" min="-10" max="10" step="0.5" value="0">
+      <span class="val" id="text-slant-v">0</span>
+    </div>
+    <div class="row">
+      <label>Width</label>
+      <input type="range" id="text-width" min="25" max="151" step="1" value="100">
+      <span class="val" id="text-width-v">100</span>
+    </div>
+    <div class="row">
+      <label>Italic</label>
+      <div class="seg" id="text-italic">
+        <button data-v="0" class="active">off</button>
+        <button data-v="1">on</button>
+      </div>
+    </div>
+    <div class="row">
+      <label>Emboss</label>
+      <input type="range" id="text-emboss" min="0" max="1" step="0.01" value="0.5">
+      <span class="val" id="text-emboss-v">.50</span>
+    </div>
+    <div class="row">
+      <label>Tracking</label>
+      <input type="range" id="text-tracking" min="-10" max="40" step="0.5" value="0">
+      <span class="val" id="text-tracking-v">0</span>
+    </div>
+    <button class="btn danger full" id="text-delete">Delete text</button>
+  </div>
+</aside>
+
+<div class="text-controls panel" id="text-controls">
+  <h3>Text content</h3>
+  <textarea class="text-input" id="text-input" placeholder="type something…">CHROME</textarea>
+  <div style="display:flex;gap:6px"><button class="btn full" id="text-done">done</button></div>
+</div>
+
+<footer class="bottombar panel" style="display:flex">
+  <button class="btn primary" id="export-btn">Export</button>
+</footer>
+
+<div class="status" id="status">
+  <span class="pulse"></span><span id="status-txt">ready</span>
+</div>
+
+<!-- export modal -->
+<div class="modal-bg" id="export-modal">
+  <div class="modal panel">
+    <h2>export <em style="font-style:italic;color:var(--fg-dim);font-size:14px;font-family:var(--mono)">// png</em></h2>
+    <div class="opt-row">
+      <div class="row">
+        <label>Resolution</label>
+        <div class="seg" id="export-res" style="flex:2">
+          <button data-v="1" class="active">screen</button>
+          <button data-v="2">2×</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>Background</label>
+        <div class="seg" id="export-bg" style="flex:2">
+          <button data-v="opaque" class="active">solid</button>
+          <button data-v="transparent">alpha</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn primary full" id="export-go">Save PNG</button>
+    <button class="btn full close" id="export-close" style="position:relative;top:auto;right:auto">Cancel</button>
+  </div>
+</div>
+
+<div class="dropzone" id="dropzone">drop image to use as reflection</div>
+
+<script>
+'use strict';
+
+// =======================================================================
+// =  LIQUID CHROME — drawing tool                                       =
+// =  WebGL pipeline:                                                    =
+// =    1) Strokes & text drawn additively into a "field" FBO            =
+// =    2) Display shader thresholds the field, derives a normal from    =
+// =       the gradient, and reflects/refracts into a matcap, equirect   =
+// =       HDRI, or live video texture.                                  =
+// =======================================================================
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+const CV = $('#gl');
+const gl = CV.getContext('webgl2', { premultipliedAlpha: false, antialias: false, preserveDrawingBuffer: false }) ||
+           CV.getContext('webgl',  { premultipliedAlpha: false, antialias: false, preserveDrawingBuffer: false });
+if (!gl) {
+  document.body.innerHTML = '<div style="padding:40px;font-family:monospace">WebGL not supported.</div>';
+  throw new Error('no webgl');
+}
+const isWebGL2 = (typeof WebGL2RenderingContext !== 'undefined') && (gl instanceof WebGL2RenderingContext);
+
+// extensions
+const halfFloatExt = isWebGL2 ? null : gl.getExtension('OES_texture_half_float');
+if (!isWebGL2 && halfFloatExt) gl.getExtension('OES_texture_half_float_linear');
+gl.getExtension('EXT_color_buffer_half_float');
+gl.getExtension('EXT_color_buffer_float');
+
+// ---------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s), '\n', src);
+    throw new Error('compile fail');
+  }
+  return s;
+}
+function program(vs, fs){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)){
+    console.error(gl.getProgramInfoLog(p));
+    throw new Error('link fail');
+  }
+  // collect uniforms / attribs
+  const u = {}, a = {};
+  const nu = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i=0;i<nu;i++){ const info = gl.getActiveUniform(p,i); u[info.name] = gl.getUniformLocation(p, info.name); }
+  const na = gl.getProgramParameter(p, gl.ACTIVE_ATTRIBUTES);
+  for (let i=0;i<na;i++){ const info = gl.getActiveAttrib(p,i); a[info.name] = gl.getAttribLocation(p, info.name); }
+  return { p, u, a };
+}
+
+function makeFBO(w, h){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  // Use float-ish texture for accumulation
+  let format, type, internal;
+  if (isWebGL2){
+    internal = gl.RGBA16F; format = gl.RGBA; type = gl.HALF_FLOAT;
+  } else if (halfFloatExt){
+    internal = gl.RGBA; format = gl.RGBA; type = halfFloatExt.HALF_FLOAT_OES;
+  } else {
+    internal = gl.RGBA; format = gl.RGBA; type = gl.UNSIGNED_BYTE;
+  }
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, type, null);
+
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE){
+    // Fallback to UNSIGNED_BYTE if HALF_FLOAT not renderable
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fbo, tex, w, h };
+}
+
+function clearFBO(fbo){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo.fbo);
+  gl.viewport(0,0,fbo.w,fbo.h);
+  gl.clearColor(0,0,0,0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+// fullscreen quad
+const QUAD = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, QUAD);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1,  -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+
+// ---------------------------------------------------------------------
+// Shaders
+// ---------------------------------------------------------------------
+const VS_QUAD = `
+  attribute vec2 aPos;
+  varying vec2 vUv;
+  void main(){
+    vUv = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+  }
+`;
+
+// stroke shader: capsule stamp
+//   R = gaussian density  (additive → blob merging / threshold / alpha)
+//   G = parabolic dome    (additive → height field for normal extraction)
+const FS_STROKE = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform vec2 uRes;
+  uniform vec2 uP0;
+  uniform vec2 uP1;
+  uniform float uR0;
+  uniform float uR1;
+  uniform float uFlow;
+  uniform float uErase;
+  uniform float uDome;   // 0=gaussian only, 1=full parabolic dome in G
+
+  void main(){
+    vec2 p = vUv * uRes;
+    vec2 ba = uP1 - uP0;
+    float l2 = max(dot(ba, ba), 0.0001);
+    float h = clamp(dot(p - uP0, ba) / l2, 0.0, 1.0);
+    float r = mix(uR0, uR1, h);
+    float d = length(p - (uP0 + ba * h));
+
+    float sigma = max(r * 0.52, 1.0);
+    float gauss = exp(-(d*d) / (sigma*sigma)) * uFlow;
+    // parabolic dome (hemisphere profile): falls off as 1-(d/r)²
+    float dome  = max(0.0, 1.0 - (d / max(r, 1.0)) * (d / max(r, 1.0))) * uFlow;
+    dome = mix(gauss, dome, uDome);
+
+    gl_FragColor = vec4(gauss, dome, 0.0, 0.0);
+  }
+`;
+
+// stamp shader — writes R=density (crisp), G=dome height (blurred)
+// vertex shader takes explicit UVs because the quad covers a sub-region
+const VS_STAMP = `
+  attribute vec2 aPos;
+  attribute vec2 aUv;
+  varying vec2 vUvT;
+  void main(){
+    vUvT = aUv;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+  }
+`;
+const FS_STAMP = `
+  precision highp float;
+  varying vec2 vUvT;
+  uniform sampler2D uSrc;      // crisp text raster  → R (density)
+  uniform sampler2D uSrcDome;  // blurred text raster → G (dome height)
+  uniform float uIntensity;    // density scale (keeps text solidly blended)
+  uniform float uHeightScale;  // dome height scale — higher = text elevated above strokes
+  void main(){
+    float d = texture2D(uSrc,     vUvT).a;
+    float h = texture2D(uSrcDome, vUvT).a;
+    gl_FragColor = vec4(d * uIntensity, h * uHeightScale, 0.0, 0.0);
+  }
+`;
+
+// blur shader (separable) — preserves both R (density) and G (dome height)
+const FS_BLUR = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform sampler2D uSrc;
+  uniform vec2 uDir;
+  void main(){
+    float w0 = 0.227027, w1 = 0.316216, w2 = 0.070270;
+    float o1 = 1.3846153846, o2 = 3.2307692308;
+    vec2 p = vUv;
+    vec2 c = texture2D(uSrc, p).rg * w0;
+    c += (texture2D(uSrc, p + uDir*o1).rg + texture2D(uSrc, p - uDir*o1).rg) * w1;
+    c += (texture2D(uSrc, p + uDir*o2).rg + texture2D(uSrc, p - uDir*o2).rg) * w2;
+    gl_FragColor = vec4(c.r, c.g, 0.0, 1.0);
+  }
+`;
+
+// blit shader — straight copy of both field channels (used for arc live-preview snapshot)
+const FS_BLIT = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform sampler2D uSrc;
+  void main(){
+    vec2 c = texture2D(uSrc, vUv).rg;
+    gl_FragColor = vec4(c.r, c.g, 0.0, 1.0);
+  }
+`;
+// R = density field (blob alpha/blending)   G = dome height (normals + elevation)
+const FS_DISPLAY = `
+  precision highp float;
+  varying vec2 vUv;
+  uniform sampler2D uField;
+  uniform sampler2D uMatcap;
+  uniform sampler2D uEnv;
+  uniform sampler2D uVideo;
+  uniform vec2 uRes;
+  uniform float uThreshold;
+  uniform float uEdge;
+  uniform float uNormalScale;
+  uniform float uEmboss;     // 0=flat normals  1=full dome inflation
+  uniform int uMode;
+  uniform float uReflect;
+  uniform float uTint;
+  uniform vec3 uTintColor;
+  uniform vec3 uBgColor;
+  uniform float uTransparentBg;
+  uniform float uVideoMirror;
+  uniform vec2 uVideoScale;
+  uniform vec2 uVideoOffset;
+  uniform float uPixelRatio;
+  uniform float uTime;
+
+  float sfD(vec2 uv){ return texture2D(uField, uv).r; }  // density
+  float sfH(vec2 uv){ return texture2D(uField, uv).g; }  // dome height
+
+  void main(){
+    vec2 px = 1.0 / uRes;
+
+    // Alpha from density (R) — preserves liquid-merge blending
+    float dens = sfD(vUv);
+    float alpha = smoothstep(uThreshold - uEdge, uThreshold + uEdge, dens);
+
+    // Normal from dome height (G) — encodes elevation per object
+    // Higher emboss → steeper dome walls → more dramatic chrome reflection
+    float hc  = sfH(vUv);
+    float hl  = sfH(vUv - vec2(px.x,0.0));
+    float hr  = sfH(vUv + vec2(px.x,0.0));
+    float hu  = sfH(vUv + vec2(0.0,px.y));
+    float hd  = sfH(vUv - vec2(0.0,px.y));
+    float hl2 = sfH(vUv - vec2(px.x*2.0,0.0));
+    float hr2 = sfH(vUv + vec2(px.x*2.0,0.0));
+    float hu2 = sfH(vUv + vec2(0.0,px.y*2.0));
+    float hd2 = sfH(vUv - vec2(0.0,px.y*2.0));
+
+    float gx = (hr - hl)*0.5 + (hr2 - hl2)*0.25;
+    float gy = (hu - hd)*0.5 + (hu2 - hd2)*0.25;
+
+    // Emboss scales the dome height gradient: 0=flat(edge only), 1=full dome
+    float embossScale = mix(1.0, 5.5, uEmboss);
+    vec2 grad = vec2(gx, gy) * uNormalScale * embossScale;
+    float gl2 = dot(grad, grad);
+    grad *= 1.0 / (1.0 + gl2 * 0.4);
+    float nz = sqrt(max(0.0001, 1.0 - dot(grad,grad)));
+    vec3 N = normalize(vec3(grad.x, grad.y, nz));
+
+    // subtle shimmer
+    float shimmer = sin(vUv.x*18.0 + uTime*0.8)*cos(vUv.y*14.0 - uTime*0.5)*0.018;
+    N = normalize(N + vec3(shimmer*alpha, shimmer*0.7*alpha, 0.0));
+
+    vec3 col = vec3(0.0);
+    if (uMode == 0) {
+      vec2 muv = N.xy * 0.5 + 0.5; muv.y = 1.0 - muv.y;
+      col = texture2D(uMatcap, muv).rgb;
+    } else if (uMode == 1) {
+      vec3 V = vec3(0.0, 0.0, 1.0);
+      vec3 R = reflect(-V, N);
+      float pi = 3.14159265359;
+      float u0 = atan(R.z, R.x)/(2.0*pi) + 0.5;
+      float v0 = asin(clamp(R.y,-1.0,1.0))/pi + 0.5;
+      col = texture2D(uEnv, vec2(u0, v0)).rgb;
+      float fres = pow(1.0 - max(N.z, 0.0), 2.0);
+      col *= 1.0 + fres * 0.6;
+    } else {
+      vec2 vUvC = vUv;
+      vUvC = (vUvC - 0.5)*uVideoScale + 0.5 + uVideoOffset;
+      if (uVideoMirror > 0.5) vUvC.x = 1.0 - vUvC.x;
+      vec2 reflectUv = clamp(vUvC + N.xy*uReflect*0.6, 0.001, 0.999);
+      col = texture2D(uVideo, reflectUv).rgb;
+      col = pow(col, vec3(0.85));
+      col += pow(1.0 - max(N.z,0.0), 2.0) * 0.25;
+    }
+
+    col = mix(col, col*uTintColor, uTint);
+    float rim = pow(1.0 - clamp(N.z,0.0,1.0), 3.5);
+    col += rim * 0.18 * alpha;
+
+    if (uTransparentBg > 0.5){
+      gl_FragColor = vec4(col, alpha);
+    } else {
+      gl_FragColor = vec4(mix(uBgColor, col, alpha), 1.0);
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------
+// Programs
+// ---------------------------------------------------------------------
+const progStroke  = program(VS_QUAD, FS_STROKE);
+const progStamp   = program(VS_STAMP, FS_STAMP);
+const progBlur    = program(VS_QUAD, FS_BLUR);
+const progBlit    = program(VS_QUAD, FS_BLIT);
+const progDisplay = program(VS_QUAD, FS_DISPLAY);
+
+function bindQuad(loc){
+  gl.bindBuffer(gl.ARRAY_BUFFER, QUAD);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+// ---------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------
+const STATE = {
+  tool: 'brush',
+  brush: { size: 34, flow: 0.55, taper: 'mono', velScale: 0.28, arcShape: 1.0 },
+  material: {
+    source: 'matcap',          // matcap | hdri | cam
+    matcapIndex: 0,
+    customMatcaps: [],
+    matcaps: [],               // {name, image, tex}
+    hdriTex: null,
+    hdriUploaded: false,
+    reflect: 0.55,
+    edge: 0.025,
+    threshold: 0.32,
+    tint: 0,
+    tintColor: [0.78, 0.86, 1.0],
+    emboss: 0.5,
+    blurAmount: 2.2
+  },
+  camera: {
+    enabled: false,
+    stream: null,
+    video: null,
+    tex: null,
+    mirror: true
+  },
+  field: null,
+  fieldTmp: null,
+  fieldBlur: null,
+  fieldSnap: null,   // snapshot for arc live-preview
+  pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+  width: 0,
+  height: 0,
+  strokes: [],       // [{type:'stroke', pts:[{x,y,r}], flow, taper, erase}, {type:'text', ...}]
+  currentStroke: null,
+  texts: [],         // text items
+  selectedTextId: null,
+  pendingPlacement: null,
+  needsRedraw: true,
+  needsFieldRebuild: false,
+  textCanvas: document.createElement('canvas'),
+  textTex: null,
+  textTexDome: null
+};
+let nextStrokeId = 1, nextTextId = 1;
+STATE.textCanvas.width = STATE.textCanvas.height = 1;
+
+// ---------------------------------------------------------------------
+// Resize
+// ---------------------------------------------------------------------
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  const pr = Math.min(window.devicePixelRatio || 1, 2);
+  STATE.pixelRatio = pr;
+  STATE.width = w; STATE.height = h;
+  CV.style.width = w+'px';
+  CV.style.height = h+'px';
+  CV.width  = Math.floor(w * pr);
+  CV.height = Math.floor(h * pr);
+
+  const fW = CV.width, fH = CV.height;
+  if (STATE.field) {
+    gl.deleteFramebuffer(STATE.field.fbo);     gl.deleteTexture(STATE.field.tex);
+    gl.deleteFramebuffer(STATE.fieldTmp.fbo);  gl.deleteTexture(STATE.fieldTmp.tex);
+    gl.deleteFramebuffer(STATE.fieldBlur.fbo); gl.deleteTexture(STATE.fieldBlur.tex);
+    gl.deleteFramebuffer(STATE.fieldSnap.fbo); gl.deleteTexture(STATE.fieldSnap.tex);
+  }
+  STATE.field     = makeFBO(fW, fH);
+  STATE.fieldTmp  = makeFBO(fW, fH);
+  STATE.fieldBlur = makeFBO(fW, fH);
+  STATE.fieldSnap = makeFBO(fW, fH);
+  clearFBO(STATE.field);
+  clearFBO(STATE.fieldTmp);
+  clearFBO(STATE.fieldBlur);
+  clearFBO(STATE.fieldSnap);
+  STATE.needsFieldRebuild = true;
+  STATE.needsRedraw = true;
+}
+window.addEventListener('resize', resize, { passive: true });
+
+// ---------------------------------------------------------------------
+// Texture helpers
+// ---------------------------------------------------------------------
+function makeTextureFromImage(img, opts={}){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // canvas top → V=1 (sky-up convention)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, opts.wrap || gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, opts.wrap || gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+// Always-RGBA8 FBO — safe to readPixels with UNSIGNED_BYTE on all browsers
+function makeRGBA8FBO(w, h){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  if (isWebGL2){
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  } else {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  }
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fbo, tex, w, h };
+}
+
+function makeBlankTexture(r=0,g=0,b=0,a=0){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1,1,0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([r*255,g*255,b*255,a*255]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+// ---------------------------------------------------------------------
+// Procedural matcaps — draw them on a 2D canvas
+// ---------------------------------------------------------------------
+function makeMatcap(spec){
+  const s = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,s,s);
+
+  // clip to circle
+  ctx.save();
+  ctx.beginPath(); ctx.arc(s/2, s/2, s/2, 0, Math.PI*2); ctx.clip();
+
+  // base radial / linear gradient(s)
+  for (const layer of spec.layers){
+    if (layer.kind === 'linear'){
+      const g = ctx.createLinearGradient(layer.x0*s, layer.y0*s, layer.x1*s, layer.y1*s);
+      for (const stop of layer.stops) g.addColorStop(stop[0], stop[1]);
+      ctx.fillStyle = g;
+      ctx.globalCompositeOperation = layer.op || 'source-over';
+      ctx.fillRect(0,0,s,s);
+    } else if (layer.kind === 'radial'){
+      const g = ctx.createRadialGradient(layer.x0*s, layer.y0*s, layer.r0*s, layer.x1*s, layer.y1*s, layer.r1*s);
+      for (const stop of layer.stops) g.addColorStop(stop[0], stop[1]);
+      ctx.fillStyle = g;
+      ctx.globalCompositeOperation = layer.op || 'source-over';
+      ctx.fillRect(0,0,s,s);
+    } else if (layer.kind === 'noise'){
+      // subtle noise dust
+      const id = ctx.getImageData(0,0,s,s);
+      for (let i=0;i<id.data.length;i+=4){
+        const n = (Math.random()-0.5) * (layer.amp || 12);
+        id.data[i]   = Math.max(0,Math.min(255,id.data[i]+n));
+        id.data[i+1] = Math.max(0,Math.min(255,id.data[i+1]+n));
+        id.data[i+2] = Math.max(0,Math.min(255,id.data[i+2]+n));
+      }
+      ctx.putImageData(id,0,0);
+    } else if (layer.kind === 'highlight'){
+      const g = ctx.createRadialGradient(layer.x*s, layer.y*s, 0, layer.x*s, layer.y*s, layer.r*s);
+      g.addColorStop(0, layer.color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.globalCompositeOperation = 'lighter';
+      ctx.fillRect(0,0,s,s);
+    }
+  }
+  ctx.restore();
+  return c;
+}
+
+const MATCAP_SPECS = [
+  { name: 'CHROME', layers: [
+    { kind:'linear', x0:0, y0:0, x1:0, y1:1, stops:[[0,'#0a0e14'],[0.4,'#5e6772'],[0.55,'#e7eaef'],[0.6,'#fbfbfb'],[0.7,'#9aa1ab'],[1,'#13171c']] },
+    { kind:'highlight', x:0.32, y:0.28, r:0.32, color:'rgba(255,255,255,0.85)' },
+    { kind:'highlight', x:0.7, y:0.85, r:0.22, color:'rgba(255,255,255,0.35)' }
+  ]},
+  { name: 'MERCURY', layers: [
+    { kind:'linear', x0:0, y0:0, x1:0, y1:1, stops:[[0,'#0a0a0a'],[0.45,'#262932'],[0.55,'#d8dee6'],[0.65,'#5d6571'],[1,'#040406']] },
+    { kind:'highlight', x:0.4, y:0.25, r:0.28, color:'rgba(255,255,255,0.9)' }
+  ]},
+  { name: 'OIL', layers: [
+    { kind:'radial', x0:0.5,y0:0.5,r0:0.05, x1:0.5,y1:0.5,r1:0.55,
+      stops:[[0,'#fff'],[0.15,'#7ce8ff'],[0.35,'#a07cff'],[0.55,'#ff6cd0'],[0.78,'#ffae5e'],[1,'#0d0418']] }
+  ]},
+  { name: 'GOLD', layers: [
+    { kind:'linear', x0:0, y0:0, x1:0, y1:1, stops:[[0,'#1a0f00'],[0.35,'#7c5212'],[0.55,'#ffe89e'],[0.7,'#cb8a1f'],[1,'#100800']] },
+    { kind:'highlight', x:0.35, y:0.3, r:0.3, color:'rgba(255,236,178,0.9)' }
+  ]},
+  { name: 'IRON', layers: [
+    { kind:'radial', x0:0.5,y0:0.4,r0:0, x1:0.5,y1:0.5,r1:0.6,
+      stops:[[0,'#dcdfe3'],[0.3,'#7d8388'],[0.6,'#3a3d42'],[1,'#0c0d0f']] }
+  ]},
+  { name: 'COPPER', layers: [
+    { kind:'linear', x0:0, y0:0, x1:0, y1:1, stops:[[0,'#1c0703'],[0.4,'#7a3215'],[0.55,'#ffb692'],[0.7,'#b5572a'],[1,'#180603']] },
+    { kind:'highlight', x:0.34, y:0.26, r:0.3, color:'rgba(255,210,180,0.9)' }
+  ]},
+  { name: 'GLASS', layers: [
+    { kind:'radial', x0:0.5,y0:0.5,r0:0.0, x1:0.5,y1:0.5,r1:0.55,
+      stops:[[0,'#e9f1ff'],[0.5,'#88a4cc'],[0.85,'#13202d'],[1,'#000']] },
+    { kind:'highlight', x:0.32, y:0.28, r:0.22, color:'rgba(255,255,255,0.9)' }
+  ]},
+  { name: 'NIGHT', layers: [
+    { kind:'linear', x0:0, y0:0, x1:0, y1:1, stops:[[0,'#000'],[0.5,'#1c2230'],[0.55,'#9aaad0'],[0.65,'#1c2230'],[1,'#000']] }
+  ]},
+];
+
+function loadMatcaps(){
+  for (const spec of MATCAP_SPECS){
+    const canv = makeMatcap(spec);
+    const tex = makeTextureFromImage(canv);
+    STATE.material.matcaps.push({ name: spec.name, canvas: canv, tex });
+  }
+}
+loadMatcaps();
+
+// procedural HDRI default
+function makeProcEnv(){
+  const w=512, h=256;
+  const c = document.createElement('canvas'); c.width=w; c.height=h;
+  const ctx = c.getContext('2d');
+  // sky gradient
+  const sky = ctx.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0, '#0d1117');
+  sky.addColorStop(0.45, '#3a4150');
+  sky.addColorStop(0.5, '#a3aab6');
+  sky.addColorStop(0.52, '#5a606b');
+  sky.addColorStop(1, '#0a0a0e');
+  ctx.fillStyle = sky; ctx.fillRect(0,0,w,h);
+  // a few "lights"
+  for (let i=0;i<6;i++){
+    const x = (i+0.5)*w/6 + (Math.random()-0.5)*30;
+    const y = h*0.3 + (Math.random()-0.5)*40;
+    const r = 50 + Math.random()*40;
+    const g = ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0, 'rgba(255,255,255,0.95)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  }
+  return makeTextureFromImage(c);
+}
+STATE.material.hdriTex = makeProcEnv();
+
+// ---------------------------------------------------------------------
+// Field rendering (strokes + text)
+// ---------------------------------------------------------------------
+function renderStrokeSegment(p0, p1, r0, r1, flow, target, erase=false){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+  gl.viewport(0,0,target.w,target.h);
+  if (erase){
+    // subtractive blending: dst = dst - src
+    gl.enable(gl.BLEND);
+    gl.blendEquationSeparate(gl.FUNC_REVERSE_SUBTRACT, gl.FUNC_REVERSE_SUBTRACT);
+    gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+  } else {
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE);
+  }
+  gl.useProgram(progStroke.p);
+  bindQuad(progStroke.a.aPos);
+  gl.uniform2f(progStroke.u.uRes, target.w, target.h);
+  // convert from CSS coords to pixel coords
+  const pr = STATE.pixelRatio;
+  gl.uniform2f(progStroke.u.uP0, p0.x * pr, (STATE.height - p0.y) * pr);
+  gl.uniform2f(progStroke.u.uP1, p1.x * pr, (STATE.height - p1.y) * pr);
+  gl.uniform1f(progStroke.u.uR0, r0 * pr);
+  gl.uniform1f(progStroke.u.uR1, r1 * pr);
+  gl.uniform1f(progStroke.u.uFlow, flow);
+  gl.uniform1f(progStroke.u.uErase, erase ? 1 : 0);
+  gl.uniform1f(progStroke.u.uDome, STATE.material.emboss);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.disable(gl.BLEND);
+  gl.blendEquation(gl.FUNC_ADD);
+}
+
+function renderTextStamp(textItem, target){
+  const pr = STATE.pixelRatio;
+  const c = STATE.textCanvas;
+  const ctxm = c.getContext('2d');
+
+  const fontSpec = textFontSpec(textItem);
+  // Set letterSpacing BEFORE measuring so the measurement accounts for tracking
+  if ('letterSpacing' in ctxm) ctxm.letterSpacing = (textItem.tracking||0) + 'px';
+  ctxm.font = fontSpec.font;
+  if (fontSpec.fvs) ctxm.fontVariationSettings = fontSpec.fvs;
+
+  const lines = textItem.text.split('\n');
+  let maxW = 0, maxLineLen = 0;
+  for (const line of lines){
+    maxW = Math.max(maxW, ctxm.measureText(line || ' ').width);
+    maxLineLen = Math.max(maxLineLen, (line || ' ').length);
+  }
+
+  // Generous padding: accounts for tracking overhang + blur spread for dome
+  const emboss = textItem.emboss != null ? textItem.emboss : 0.5;
+  const blurPx = emboss * textItem.size * 0.38;  // blur radius in CSS px
+  const trackingPad = Math.max(0, textItem.tracking || 0) * maxLineLen;
+  const pad = Math.ceil(blurPx * 1.6 + textItem.size * 0.6) + 10;  // generous canvas padding
+  const lineH = textItem.size * 1.08;
+  const w = Math.ceil(maxW + trackingPad + pad * 2);
+  const h = Math.ceil(lineH * lines.length + pad * 2);
+
+  // --- crisp density canvas ---
+  c.width  = Math.max(1, Math.ceil(w * pr));
+  c.height = Math.max(1, Math.ceil(h * pr));
+  const ctx = c.getContext('2d');
+  ctx.scale(pr, pr);
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = fontSpec.font;
+  if (fontSpec.fvs) ctx.fontVariationSettings = fontSpec.fvs;
+  ctx.fillStyle = '#fff';
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  if ('letterSpacing' in ctx) ctx.letterSpacing = (textItem.tracking||0) + 'px';
+  let y = pad;
+  for (const line of lines){
+    ctx.save();
+    if (textItem.slant && textItem.family !== 'sans')
+      ctx.transform(1, 0, Math.tan(-textItem.slant * Math.PI/180), 1, 0, 0);
+    ctx.fillText(line, pad, y);
+    ctx.restore();
+    y += lineH;
+  }
+
+  // --- dome canvas (blurred crisp → elevation profile inside letters) ---
+  const dome = document.createElement('canvas');
+  dome.width = c.width; dome.height = c.height;
+  const dCtx = dome.getContext('2d');
+  const blurPxScaled = Math.max(0.5, blurPx * pr);
+  dCtx.filter = `blur(${blurPxScaled}px)`;
+  dCtx.drawImage(c, 0, 0);
+  dCtx.filter = 'none';
+  // Add a lighter crisp layer on top so letter centres peak higher
+  dCtx.globalCompositeOperation = 'lighter';
+  dCtx.globalAlpha = 0.35;
+  dCtx.drawImage(c, 0, 0);
+  dCtx.globalAlpha = 1;
+  dCtx.globalCompositeOperation = 'source-over';
+
+  // --- upload textures ---
+  if (!STATE.textTex)     STATE.textTex     = gl.createTexture();
+  if (!STATE.textTexDome) STATE.textTexDome = gl.createTexture();
+
+  const uploadTex = (tex, canv) => {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canv);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  };
+  uploadTex(STATE.textTex,     c);
+  uploadTex(STATE.textTexDome, dome);
+
+  // --- build sub-quad covering text area in NDC ---
+  const x0 = textItem.x - pad, y0 = textItem.y - pad;
+  const x1 = x0 + w,           y1 = y0 + h;
+  const ndc = (px, py) => [
+    (px * pr) / target.w * 2 - 1,
+    1 - (py * pr) / target.h * 2
+  ];
+  const [ax,ay] = ndc(x0,y0), [bx,by] = ndc(x1,y0);
+  const [cx,cy] = ndc(x0,y1), [dx,dy] = ndc(x1,y1);
+  // pos(x,y) + uv(u,v): texture uploaded FLIP_Y so v=1 is top of canvas
+  const verts = new Float32Array([
+    ax,ay, 0,1,   bx,by, 1,1,   cx,cy, 0,0,
+    cx,cy, 0,0,   bx,by, 1,1,   dx,dy, 1,0
+  ]);
+  const tmpBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, tmpBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+  gl.viewport(0, 0, target.w, target.h);
+  gl.enable(gl.BLEND);
+  gl.blendEquation(gl.FUNC_ADD);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.useProgram(progStamp.p);
+  gl.enableVertexAttribArray(progStamp.a.aPos);
+  gl.vertexAttribPointer(progStamp.a.aPos, 2, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(progStamp.a.aUv);
+  gl.vertexAttribPointer(progStamp.a.aUv,  2, gl.FLOAT, false, 16, 8);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, STATE.textTex);
+  gl.uniform1i(progStamp.u.uSrc, 0);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, STATE.textTexDome);
+  gl.uniform1i(progStamp.u.uSrcDome, 1);
+  gl.uniform1f(progStamp.u.uIntensity, 0.85);
+  // Height scale: emboss=0 → same as density; emboss=1 → 6× taller than strokes (flow≈0.55)
+  const heightScale = 0.85 * (1.0 + emboss * 6.0);
+  gl.uniform1f(progStamp.u.uHeightScale, heightScale);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.disable(gl.BLEND);
+  gl.disableVertexAttribArray(progStamp.a.aUv);
+  gl.deleteBuffer(tmpBuf);
+}
+
+function textFontSpec(t){
+  // Custom loaded font: use cssFamily directly
+  const isCustom = customFonts.some(f => f.cssFamily === t.family);
+  let family;
+  if (isCustom){
+    family = `"${t.family}", serif`;
+  } else if (t.family === 'sans'){
+    family = '"Roboto Flex", system-ui, sans-serif';
+  } else if (t.family === 'serif'){
+    family = '"Instrument Serif", serif';
+  } else {
+    family = '"JetBrains Mono", monospace';
+  }
+  const italic = t.italic ? 'italic' : 'normal';
+  const weight = t.weight || 700;
+  const fvs = (t.family === 'sans')
+    ? `"wght" ${weight}, "wdth" ${t.width||100}, "slnt" ${-(t.slant||0)}`
+    : null;
+  return {
+    font: `${italic} ${weight} ${t.size}px ${family}`,
+    fvs
+  };
+}
+
+// rebuild the entire field from stored strokes + texts
+function rebuildField(target = STATE.field){
+  clearFBO(target);
+  for (const s of STATE.strokes){
+    if (s.kind === 'stroke' && s.smoothPts.length > 1){
+      // Re-render all smooth points into the target FBO.
+      // NOTE: renderStrokeSegment uses STATE.pixelRatio which is
+      // temporarily inflated during hi-res export — no extra scaling needed.
+      const tmp = { ...s, lastRenderIdx: 0 };
+      for (let i = 1; i < s.smoothPts.length; i++){
+        renderStrokeSegment(s.smoothPts[i-1], s.smoothPts[i],
+          s.smoothPts[i-1].r, s.smoothPts[i].r,
+          s.flow, target, s.erase);
+      }
+    }
+  }
+  for (const t of STATE.texts){
+    renderTextStamp(t, target);
+  }
+}
+
+// Copy both field channels from src to dst
+function blitFBO(src, dst){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
+  gl.viewport(0, 0, dst.w, dst.h);
+  gl.disable(gl.BLEND);
+  gl.useProgram(progBlit.p);
+  bindQuad(progBlit.a.aPos);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, src.tex);
+  gl.uniform1i(progBlit.u.uSrc, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+// Render ALL smooth points (not just new ones) — used for arc live-preview
+function renderAllSmoothPts(s, target){
+  for (let i = 1; i < s.smoothPts.length; i++){
+    renderStrokeSegment(
+      s.smoothPts[i-1], s.smoothPts[i],
+      s.smoothPts[i-1].r, s.smoothPts[i].r,
+      s.flow, target, s.erase);
+  }
+  if (s.smoothPts.length > 0) s.lastRenderIdx = s.smoothPts.length - 1;
+}
+
+// Recompute arc radii for all current smooth points in-place
+function recomputeArcRadii(s){
+  const N = s.smoothPts.length;
+  if (N < 2) return;
+  const shape = s.arcShape != null ? s.arcShape : 1.0;
+  for (let i = 0; i < N; i++){
+    const t = i / (N - 1);
+    s.smoothPts[i].r = s.base * Math.max(0.015, Math.pow(Math.sin(t * Math.PI), shape));
+  }
+}
+
+// ---------------------------------------------------------------------
+// Catmull-Rom stroke system
+// ---------------------------------------------------------------------
+
+// Evaluate a point on a Catmull-Rom spline at parameter t ∈ [0,1]
+// between control points p1 and p2, with context points p0 and p3.
+function crPt(p0, p1, p2, p3, t){
+  const t2 = t*t, t3 = t2*t;
+  return {
+    x: 0.5*((2*p1.x) + (-p0.x+p2.x)*t + (2*p0.x-5*p1.x+4*p2.x-p3.x)*t2 + (-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+    y: 0.5*((2*p1.y) + (-p0.y+p2.y)*t + (2*p0.y-5*p1.y+4*p2.y-p3.y)*t2 + (-p0.y+3*p1.y-3*p2.y+p3.y)*t3)
+  };
+}
+
+// Map instantaneous velocity (px/ms) to a brush radius
+function velToRadius(vel, base, taper, velScale){
+  if (taper === 'mono' || taper === 'arc') return base; // arc handled post-stroke
+  const k = velScale * 0.55;
+  return base * Math.max(0.02, Math.exp(-k * vel));
+}
+
+// For 'arc' taper: after the full stroke is known, rescale radii to a
+// smooth parabolic envelope — thin at both ends, full width in the middle.
+function postProcessStroke(s){
+  if (s.taper !== 'arc') return;
+  const N = s.smoothPts.length;
+  if (N < 2) return;
+  const shape = s.arcShape != null ? s.arcShape : 1.0;
+  for (let i = 0; i < N; i++){
+    const t = i / (N - 1);
+    // sin(t·π)^shape:
+    //   shape < 1  → flatter, stays wide longer (lozenge / wide swell)
+    //   shape = 1  → pure sine arc
+    //   shape > 1  → sharp tips, thin entry/exit (needle / calligraphy)
+    const env = Math.max(0.015, Math.pow(Math.sin(t * Math.PI), shape));
+    s.smoothPts[i].r = s.base * env;
+  }
+}
+
+// Evaluate a full CR segment from rawPt[i] to rawPt[i+1]
+// Returns dense array of {x,y,r} at ~2px spacing
+function evalCRSegment(p0, p1, p2, p3, base, taper, velScale){
+  const chord = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  const steps = Math.max(2, Math.ceil(chord / 1.8));
+  const pts = [];
+  for (let i = 0; i <= steps; i++){
+    const t = i / steps;
+    const pos = crPt(p0, p1, p2, p3, t);
+    const vel = p1.vel + (p2.vel - p1.vel) * t;
+    pos.r = velToRadius(vel, base, taper, velScale);
+    pts.push(pos);
+  }
+  return pts;
+}
+
+function startStroke(x, y, timestamp, erase){
+  const s = {
+    id: nextStrokeId++,
+    kind: 'stroke',
+    rawPts: [{ x, y, t: timestamp, vel: 0 }],
+    smoothPts: [],
+    lastEvalSeg: -1,
+    lastRenderIdx: -1,
+    flow: STATE.brush.flow,
+    taper: STATE.brush.taper,
+    base: STATE.brush.size,
+    velScale: STATE.brush.velScale,
+    arcShape: STATE.brush.arcShape,
+    erase: !!erase
+  };
+  STATE.currentStroke = s;
+  STATE.strokes.push(s);
+  // For arc: snapshot the current field so we can restore + redraw on each point
+  if (s.taper === 'arc' && STATE.fieldSnap){
+    blitFBO(STATE.field, STATE.fieldSnap);
+  }
+}
+
+function appendStroke(x, y, timestamp){
+  const s = STATE.currentStroke;
+  if (!s) return;
+  const prev = s.rawPts[s.rawPts.length - 1];
+  const dx = x - prev.x, dy = y - prev.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1.0) return;
+  const dt = Math.max(timestamp - prev.t, 0.1); // ms, clamped away from 0
+  const vel = dist / dt;                         // px/ms
+  s.rawPts.push({ x, y, t: timestamp, vel });
+
+  // Flush completed CR segments: segment i (rawPts[i]→rawPts[i+1]) needs rawPts[i+2]
+  // so it's evaluable once rawPts.length >= i+3, i.e. i <= length-3
+  const n = s.rawPts.length;
+  for (let i = s.lastEvalSeg + 1; i <= n - 3; i++){
+    const p0 = s.rawPts[Math.max(0, i - 1)];
+    const p1 = s.rawPts[i];
+    const p2 = s.rawPts[i + 1];
+    const p3 = s.rawPts[i + 2];
+    const newPts = evalCRSegment(p0, p1, p2, p3, s.base, s.taper, s.velScale);
+    // skip first point on joined segments to avoid overlap stamp
+    const skip = s.smoothPts.length > 0 ? 1 : 0;
+    s.smoothPts.push(...newPts.slice(skip));
+    s.lastEvalSeg = i;
+  }
+
+  // Render to field
+  if (s.taper === 'arc' && s.smoothPts.length > 0){
+    // Live arc: restore snapshot, recompute envelope, redraw full stroke
+    recomputeArcRadii(s);
+    blitFBO(STATE.fieldSnap, STATE.field);
+    renderAllSmoothPts(s, STATE.field);
+  } else {
+    renderSmoothPts(s, STATE.field);
+  }
+  STATE.needsRedraw = true;
+}
+
+function endStroke(x, y, timestamp){
+  const s = STATE.currentStroke;
+  if (!s){ STATE.currentStroke = null; return; }
+  const n = s.rawPts.length;
+  // Flush remaining segments using duplicated last point as lookahead
+  for (let i = s.lastEvalSeg + 1; i <= n - 2; i++){
+    const p0 = s.rawPts[Math.max(0, i - 1)];
+    const p1 = s.rawPts[i];
+    const p2 = s.rawPts[i + 1];
+    const p3 = s.rawPts[Math.min(n - 1, i + 2)]; // duplicate last if needed
+    const newPts = evalCRSegment(p0, p1, p2, p3, s.base, s.taper, s.velScale);
+    const skip = s.smoothPts.length > 0 ? 1 : 0;
+    s.smoothPts.push(...newPts.slice(skip));
+    s.lastEvalSeg = i;
+  }
+  if (s.taper === 'arc'){
+    // Final pass with complete stroke length — recompute for perfect envelope
+    recomputeArcRadii(s);
+    if (STATE.fieldSnap) blitFBO(STATE.fieldSnap, STATE.field);
+    renderAllSmoothPts(s, STATE.field);
+  } else {
+    renderSmoothPts(s, STATE.field);
+  }
+  STATE.needsRedraw = true;
+  STATE.currentStroke = null;
+}
+
+// Render all unrendered smoothPts to a field FBO
+function renderSmoothPts(s, target){
+  const start = Math.max(1, s.lastRenderIdx + 1);
+  for (let i = start; i < s.smoothPts.length; i++){
+    renderStrokeSegment(s.smoothPts[i-1], s.smoothPts[i],
+      s.smoothPts[i-1].r, s.smoothPts[i].r,
+      s.flow, target, s.erase);
+  }
+  if (s.smoothPts.length > 0) s.lastRenderIdx = s.smoothPts.length - 1;
+}
+
+
+// ---------------------------------------------------------------------
+// Display pass
+// ---------------------------------------------------------------------
+function present(target = null, opts = {}){
+  const w = opts.width  || CV.width;
+  const h = opts.height || CV.height;
+  if (target){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+  } else {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+  gl.viewport(0, 0, w, h);
+
+  const transparent = !!opts.transparentBg;
+  const bg = themeBgColor();
+
+  gl.useProgram(progDisplay.p);
+  bindQuad(progDisplay.a.aPos);
+
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, (opts.fieldTex || (STATE.fieldBlur && STATE.fieldBlur.tex) || (STATE.field && STATE.field.tex)));
+  gl.uniform1i(progDisplay.u.uField, 0);
+
+  const m = STATE.material;
+  const mode = m.source === 'matcap' ? 0 : (m.source === 'hdri' ? 1 : 2);
+  const matTex = m.matcaps[m.matcapIndex]?.tex;
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, matTex || makeBlankTexture(0.5,0.5,0.5,1));
+  gl.uniform1i(progDisplay.u.uMatcap, 1);
+
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, m.hdriTex || makeBlankTexture(0,0,0,1));
+  gl.uniform1i(progDisplay.u.uEnv, 2);
+
+  gl.activeTexture(gl.TEXTURE3);
+  gl.bindTexture(gl.TEXTURE_2D, STATE.camera.tex || makeBlankTexture(0,0,0,1));
+  gl.uniform1i(progDisplay.u.uVideo, 3);
+
+  gl.uniform2f(progDisplay.u.uRes, w, h);
+  gl.uniform1f(progDisplay.u.uThreshold, m.threshold);
+  gl.uniform1f(progDisplay.u.uEdge, m.edge);
+  gl.uniform1f(progDisplay.u.uNormalScale, 22.0);
+  gl.uniform1i(progDisplay.u.uMode, mode);
+  gl.uniform1f(progDisplay.u.uReflect, m.reflect);
+  gl.uniform1f(progDisplay.u.uTint, m.tint);
+  gl.uniform3f(progDisplay.u.uTintColor, m.tintColor[0], m.tintColor[1], m.tintColor[2]);
+  gl.uniform3f(progDisplay.u.uBgColor, bg[0], bg[1], bg[2]);
+  gl.uniform1f(progDisplay.u.uTransparentBg, transparent ? 1 : 0);
+  gl.uniform1f(progDisplay.u.uVideoMirror, STATE.camera.mirror ? 1 : 0);
+  // fit video to canvas covering aspect
+  let vScale = [1,1], vOffset=[0,0];
+  if (STATE.camera.video && STATE.camera.video.videoWidth){
+    const va = STATE.camera.video.videoWidth / STATE.camera.video.videoHeight;
+    const ca = w / h;
+    if (va > ca) {
+      vScale = [ca/va, 1];
+    } else {
+      vScale = [1, va/ca];
+    }
+  }
+  gl.uniform2f(progDisplay.u.uVideoScale, vScale[0], vScale[1]);
+  gl.uniform2f(progDisplay.u.uVideoOffset, 0, 0);
+  gl.uniform1f(progDisplay.u.uEmboss, opts.emboss !== undefined ? opts.emboss : m.emboss);
+  gl.uniform1f(progDisplay.u.uPixelRatio, STATE.pixelRatio);
+  gl.uniform1f(progDisplay.u.uTime, (opts.time !== undefined ? opts.time : (performance.now() / 1000)));
+
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+function themeBgColor(){
+  const c = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  // parse hex
+  if (c.startsWith('#')){
+    const v = c.length === 4
+      ? [parseInt(c[1]+c[1],16), parseInt(c[2]+c[2],16), parseInt(c[3]+c[3],16)]
+      : [parseInt(c.slice(1,3),16), parseInt(c.slice(3,5),16), parseInt(c.slice(5,7),16)];
+    return [v[0]/255, v[1]/255, v[2]/255];
+  }
+  return [0,0,0];
+}
+
+// blur field -> tmp (horizontal) -> blur (vertical) at given pixel spread
+function doBlurPass(src, tmp, dst, spread){
+  const w = src.w, h = src.h;
+  // H pass: src -> tmp
+  gl.bindFramebuffer(gl.FRAMEBUFFER, tmp.fbo);
+  gl.viewport(0,0,w,h);
+  gl.useProgram(progBlur.p);
+  bindQuad(progBlur.a.aPos);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex);
+  gl.uniform1i(progBlur.u.uSrc, 0);
+  gl.uniform2f(progBlur.u.uDir, spread / w, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  // V pass: tmp -> dst
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
+  gl.viewport(0,0,w,h);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tmp.tex);
+  gl.uniform2f(progBlur.u.uDir, 0, spread / h);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+// ---------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------
+function loop(){
+  if (STATE.needsFieldRebuild){
+    rebuildField();
+    STATE.needsFieldRebuild = false;
+    STATE.needsRedraw = true;
+  }
+  if (STATE.camera.enabled && STATE.camera.video && STATE.camera.video.readyState >= 2){
+    if (!STATE.camera.tex) STATE.camera.tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, STATE.camera.tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, STATE.camera.video); } catch(e){}
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    STATE.needsRedraw = true;
+  }
+  if (STATE.needsRedraw || STATE.camera.enabled || STATE.strokes.length > 0){
+    // blur the raw field for the liquid merging effect
+    if (STATE.field && STATE.fieldTmp && STATE.fieldBlur){
+      doBlurPass(STATE.field, STATE.fieldTmp, STATE.fieldBlur, STATE.material.blurAmount);
+    }
+    present();
+    STATE.needsRedraw = false;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------------
+// Pointer / Touch input
+// ---------------------------------------------------------------------
+let isDown = false, dragMode = null, dragOffset = null, dragText = null, resizeText = null;
+function ptFromEvent(e){
+  const r = CV.getBoundingClientRect();
+  return { x: (e.clientX - r.left), y: (e.clientY - r.top) };
+}
+
+const brushCursor = $('#brush-cursor');
+function updateCursor(x, y){
+  const d = STATE.brush.size * 2;
+  brushCursor.style.left = x + 'px';
+  brushCursor.style.top  = y + 'px';
+  brushCursor.style.width  = d + 'px';
+  brushCursor.style.height = d + 'px';
+  brushCursor.style.display = (STATE.tool === 'text') ? 'none' : 'block';
+}
+
+CV.addEventListener('pointerdown', (e)=>{
+  e.preventDefault();
+  try { CV.setPointerCapture(e.pointerId); } catch(_){}
+  const p = ptFromEvent(e);
+  updateCursor(p.x, p.y);
+
+  if (STATE.tool === 'text'){
+    addText(p.x, p.y);
+    return;
+  }
+  isDown = true;
+  startStroke(p.x, p.y, e.timeStamp, STATE.tool === 'erase');
+  appendStroke(p.x + 0.5, p.y + 0.01, e.timeStamp + 1);
+}, {passive:false});
+
+CV.addEventListener('pointermove', (e)=>{
+  const p = ptFromEvent(e);
+  updateCursor(p.x, p.y);
+  $('#coord').textContent = `${p.x.toFixed(1).padStart(5,'0')} / ${p.y.toFixed(1).padStart(5,'0')}`;
+  if (!isDown) return;
+  appendStroke(p.x, p.y, e.timeStamp);
+}, {passive:false});
+
+function endPtr(e){
+  if (isDown){
+    isDown = false;
+    endStroke(0, 0, e.timeStamp);
+  }
+}
+CV.addEventListener('pointerup', endPtr);
+CV.addEventListener('pointercancel', endPtr);
+CV.addEventListener('pointerleave', endPtr);
+
+// ---------------------------------------------------------------------
+// Tool switching
+// ---------------------------------------------------------------------
+function setTool(name){
+  STATE.tool = name;
+  document.body.dataset.tool = name;
+  $$('.tool-btn[data-tool]').forEach(b=>b.classList.toggle('active', b.dataset.tool === name));
+  $('#group-text').style.display = (name === 'text') ? 'flex' : 'none';
+  // when leaving text tool, deselect
+  if (name !== 'text'){ selectText(null); }
+  $('#text-controls').classList.toggle('visible', name === 'text' && STATE.selectedTextId != null);
+}
+$$('.tool-btn[data-tool]').forEach(b => b.addEventListener('click', ()=> setTool(b.dataset.tool)));
+
+// ---------------------------------------------------------------------
+// Text tool — DOM overlay for placement & editing
+// ---------------------------------------------------------------------
+const textLayer = $('#text-layer');
+
+function addText(x, y){
+  const t = {
+    id: nextTextId++,
+    kind: 'text',
+    text: 'CHROME',
+    family: $('#text-family').value || 'mono',
+    size: parseFloat($('#text-size').value),
+    weight: parseFloat($('#text-weight').value),
+    slant: parseFloat($('#text-slant').value),
+    width: parseFloat($('#text-width').value),
+    italic: $$('#text-italic button').find(b=>b.classList.contains('active'))?.dataset.v === '1',
+    tracking: parseFloat($('#text-tracking').value),
+    emboss: parseFloat($('#text-emboss').value),
+    x: x, y: y
+  };
+  STATE.texts.push(t);
+  STATE.strokes.push(t); // also in main list for rebuild
+  STATE.selectedTextId = t.id;
+  buildTextDom();
+  STATE.needsFieldRebuild = true;
+  // open text controls
+  $('#text-input').value = t.text;
+  $('#text-controls').classList.add('visible');
+  syncTextInspector(t);
+}
+
+function removeText(id){
+  STATE.texts = STATE.texts.filter(t => t.id !== id);
+  STATE.strokes = STATE.strokes.filter(s => s.id !== id);
+  if (STATE.selectedTextId === id) STATE.selectedTextId = null;
+  buildTextDom();
+  STATE.needsFieldRebuild = true;
+  $('#text-controls').classList.remove('visible');
+}
+
+function selectText(id){
+  STATE.selectedTextId = id;
+  buildTextDom();
+  if (id != null){
+    const t = STATE.texts.find(t => t.id === id);
+    if (t){
+      $('#text-input').value = t.text;
+      syncTextInspector(t);
+      $('#text-controls').classList.add('visible');
+    }
+  } else {
+    $('#text-controls').classList.remove('visible');
+  }
+}
+
+function syncTextInspector(t){
+  $('#text-family').value = t.family;
+  $('#text-size').value = t.size; $('#text-size-v').textContent = t.size;
+  $('#text-weight').value = t.weight; $('#text-weight-v').textContent = t.weight;
+  $('#text-slant').value = t.slant; $('#text-slant-v').textContent = t.slant;
+  $('#text-width').value = t.width; $('#text-width-v').textContent = t.width;
+  $('#text-tracking').value = t.tracking; $('#text-tracking-v').textContent = t.tracking;
+  $('#text-emboss').value = t.emboss != null ? t.emboss : 0.5;
+  $('#text-emboss-v').textContent = (t.emboss != null ? t.emboss : 0.5).toFixed(2);
+  $$('#text-italic button').forEach(b => b.classList.toggle('active', String(b.dataset.v === '1') === String(t.italic)));
+}
+
+function buildTextDom(){
+  textLayer.innerHTML = '';
+  for (const t of STATE.texts){
+    const el = document.createElement('div');
+    el.className = 'text-item' + (STATE.selectedTextId === t.id ? ' selected' : '');
+    el.style.left = t.x + 'px';
+    el.style.top  = t.y + 'px';
+    const fs = textFontSpec(t);
+    el.style.font = fs.font;
+    if (fs.fvs) el.style.fontVariationSettings = fs.fvs;
+    if (t.tracking) el.style.letterSpacing = t.tracking + 'px';
+    if (t.slant && t.family !== 'sans') el.style.transform = `skewX(${-t.slant}deg)`;
+    el.textContent = t.text;
+    el.dataset.id = t.id;
+
+    // handles only on selected
+    if (STATE.selectedTextId === t.id){
+      const handle = document.createElement('div');
+      handle.className = 'handle'; el.appendChild(handle);
+      const resize = document.createElement('div');
+      resize.className = 'resize'; el.appendChild(resize);
+
+      handle.addEventListener('pointerdown', (e)=>{
+        e.preventDefault(); e.stopPropagation();
+        dragText = t;
+        dragOffset = { x: e.clientX - t.x, y: e.clientY - t.y };
+        try { handle.setPointerCapture(e.pointerId); } catch(_){}
+      });
+      handle.addEventListener('pointermove', (e)=>{
+        if (dragText !== t) return;
+        t.x = e.clientX - dragOffset.x;
+        t.y = e.clientY - dragOffset.y;
+        el.style.left = t.x+'px'; el.style.top = t.y+'px';
+        STATE.needsFieldRebuild = true;
+      });
+      handle.addEventListener('pointerup', ()=>{ dragText = null; });
+
+      resize.addEventListener('pointerdown', (e)=>{
+        e.preventDefault(); e.stopPropagation();
+        resizeText = { t, startSize: t.size, startX: e.clientX, startY: e.clientY };
+        try { resize.setPointerCapture(e.pointerId); } catch(_){}
+      });
+      resize.addEventListener('pointermove', (e)=>{
+        if (!resizeText || resizeText.t !== t) return;
+        const dx = e.clientX - resizeText.startX;
+        const dy = e.clientY - resizeText.startY;
+        const ns = Math.max(20, Math.min(400, resizeText.startSize + Math.max(dx, dy)));
+        t.size = ns;
+        $('#text-size').value = ns; $('#text-size-v').textContent = Math.round(ns);
+        const fs2 = textFontSpec(t);
+        el.style.font = fs2.font;
+        if (fs2.fvs) el.style.fontVariationSettings = fs2.fvs;
+        STATE.needsFieldRebuild = true;
+      });
+      resize.addEventListener('pointerup', ()=>{ resizeText = null; });
+    }
+
+    el.addEventListener('pointerdown', (e)=>{
+      // also allow drag on the text body
+      if (e.target !== el) return;
+      e.preventDefault(); e.stopPropagation();
+      selectText(t.id);
+      dragText = t;
+      dragOffset = { x: e.clientX - t.x, y: e.clientY - t.y };
+      try { el.setPointerCapture(e.pointerId); } catch(_){}
+    });
+    el.addEventListener('pointermove', (e)=>{
+      if (dragText !== t) return;
+      t.x = e.clientX - dragOffset.x;
+      t.y = e.clientY - dragOffset.y;
+      el.style.left = t.x+'px'; el.style.top = t.y+'px';
+      STATE.needsFieldRebuild = true;
+    });
+    el.addEventListener('pointerup', ()=>{ dragText = null; });
+
+    textLayer.appendChild(el);
+  }
+}
+
+// hook text input
+$('#text-input').addEventListener('input', (e)=>{
+  if (STATE.selectedTextId == null) return;
+  const t = STATE.texts.find(t => t.id === STATE.selectedTextId);
+  if (!t) return;
+  t.text = e.target.value;
+  buildTextDom();
+  STATE.needsFieldRebuild = true;
+});
+$('#text-done').addEventListener('click', ()=>{
+  $('#text-controls').classList.remove('visible');
+});
+$('#text-delete').addEventListener('click', ()=>{
+  if (STATE.selectedTextId != null) removeText(STATE.selectedTextId);
+});
+
+// click empty area when in text tool with a selected text -> deselect
+// scroll to resize brush
+CV.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -2 : 2;
+  const slider = $('#brush-size');
+  const newVal = Math.max(3, Math.min(120, STATE.brush.size + delta));
+  slider.value = newVal;
+  slider.dispatchEvent(new Event('input'));
+}, { passive: false });
+
+document.addEventListener('keydown', (e)=>{
+  if (e.key === 'Escape') selectText(null);
+  if (e.key === 'Delete' || e.key === 'Backspace'){
+    if (STATE.selectedTextId != null && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'INPUT'){
+      removeText(STATE.selectedTextId);
+    }
+  }
+  const typing = ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
+  const noMod = !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+  if (noMod && !typing && (e.key === 'b' || e.key === 'B')) setTool('brush');
+  if (noMod && !typing && (e.key === 't' || e.key === 'T')) setTool('text');
+  if (noMod && !typing && (e.key === 'e' || e.key === 'E')) setTool('erase');
+  if ((e.metaKey||e.ctrlKey) && e.key === 'z'){ e.preventDefault(); undo(); }
+  if ((e.metaKey||e.ctrlKey) && (e.key === 'k' || e.key === 'K')){ e.preventDefault(); clearAll(); }
+});
+
+// ---------------------------------------------------------------------
+// Inspector wiring — sliders & seg buttons
+// ---------------------------------------------------------------------
+function bindRange(id, valId, onChange, fmt){
+  const el = $(id), lab = $(valId);
+  if (!el) return;
+  const upd = ()=>{
+    const v = parseFloat(el.value);
+    lab.textContent = fmt ? fmt(v) : (Number.isInteger(v) ? v : v.toFixed(2));
+    onChange(v);
+    STATE.needsRedraw = true;
+  };
+  el.addEventListener('input', upd);
+  upd();
+}
+function bindSeg(rootSel, onChange){
+  $$(`${rootSel} button`).forEach(btn => {
+    btn.addEventListener('click', ()=>{
+      $$(`${rootSel} button`).forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      onChange(btn.dataset.v);
+      STATE.needsRedraw = true;
+    });
+  });
+}
+
+bindRange('#brush-size','#brush-size-v', v => {
+  STATE.brush.size = v;
+  const d = v * 2;
+  brushCursor.style.width  = d + 'px';
+  brushCursor.style.height = d + 'px';
+}, v=>v.toFixed(0));
+bindRange('#brush-flow','#brush-flow-v', v => STATE.brush.flow = v);
+bindRange('#brush-velscale','#brush-velscale-v', v => STATE.brush.velScale = v, v=>v.toFixed(2));
+bindRange('#brush-arcshape','#brush-arcshape-v', v => STATE.brush.arcShape = v, v=>v.toFixed(2));
+bindSeg('#brush-taper', v => {
+  STATE.brush.taper = v;
+  $('#row-velscale').style.display = (v === 'vel')  ? 'flex' : 'none';
+  $('#row-arcshape').style.display = (v === 'arc')  ? 'flex' : 'none';
+});
+
+bindRange('#mat-emboss','#mat-emboss-v', v => STATE.material.emboss = v, v=>v.toFixed(2));
+STATE.material.emboss = 0.5;
+bindRange('#field-blur','#field-blur-v', v => STATE.material.blurAmount = v);
+STATE.material.blurAmount = 2.2;
+bindRange('#reflect-strength','#reflect-strength-v', v => STATE.material.reflect = v);
+bindRange('#edge-soft','#edge-soft-v', v => STATE.material.edge = v, v=>v.toFixed(3));
+bindRange('#threshold','#threshold-v', v => STATE.material.threshold = v, v=>v.toFixed(2));
+bindRange('#tint','#tint-v', v => STATE.material.tint = v);
+
+bindSeg('#mat-source', v => {
+  STATE.material.source = v;
+  if (v === 'cam') startCamera();
+});
+
+// text inspector
+bindRange('#text-size','#text-size-v', v => updSelText('size', v), v=>v.toFixed(0));
+bindRange('#text-weight','#text-weight-v', v => updSelText('weight', v), v=>v.toFixed(0));
+bindRange('#text-slant','#text-slant-v', v => updSelText('slant', v));
+bindRange('#text-width','#text-width-v', v => updSelText('width', v), v=>v.toFixed(0));
+bindRange('#text-tracking','#text-tracking-v', v => updSelText('tracking', v));
+bindSeg('#text-italic', v => updSelText('italic', v === '1'));
+bindRange('#text-emboss','#text-emboss-v', v => updSelText('emboss', v), v=>v.toFixed(2));
+$('#text-family').addEventListener('change', e => updSelText('family', e.target.value));
+
+// Font loader
+$('#font-load-btn').addEventListener('click', async ()=>{
+  const name = $('#font-load-input').value.trim();
+  if (!name) return;
+  await loadGoogleFont(name);
+});
+$('#font-load-input').addEventListener('keydown', async e => {
+  if (e.key === 'Enter'){ e.preventDefault(); await loadGoogleFont($('#font-load-input').value.trim()); }
+});
+
+function updSelText(prop, val){
+  if (STATE.selectedTextId == null) return;
+  const t = STATE.texts.find(t => t.id === STATE.selectedTextId);
+  if (!t) return;
+  t[prop] = val;
+  buildTextDom();
+  STATE.needsFieldRebuild = true;
+}
+
+// ---------------------------------------------------------------------
+// Font loading
+// ---------------------------------------------------------------------
+const customFonts = []; // {name, cssFamily}
+
+async function loadGoogleFont(name){
+  if (!name) return;
+  // normalise: "playfair display" → "Playfair Display"
+  const pretty = name.split(' ').map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+  const cssFamily = pretty;
+  setStatus('loading font…');
+  try {
+    // inject Google Fonts CSS
+    const encoded = encodeURIComponent(pretty).replace(/%20/g,'+');
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${encoded}:ital,wght@0,100..900;1,100..900&display=swap`;
+    document.head.appendChild(link);
+    // wait until font actually loads
+    await document.fonts.load(`700 48px "${cssFamily}"`);
+    // add to dropdown if not already there
+    const sel = $('#text-family');
+    if (![...sel.options].some(o=>o.value===cssFamily)){
+      const opt = document.createElement('option');
+      opt.value = cssFamily;
+      opt.textContent = pretty;
+      opt.dataset.custom = '1';
+      sel.appendChild(opt);
+      customFonts.push({ name: pretty, cssFamily });
+    }
+    sel.value = cssFamily;
+    updSelText('family', cssFamily);
+    $('#font-load-input').value = '';
+    setStatus(`"${pretty}" loaded`);
+  } catch(e){
+    console.warn(e);
+    setStatus('font load failed');
+  }
+}
+
+// Override textFontSpec — handled below in the updated function
+
+function buildMatcapGrid(){
+  const grid = $('#matcap-grid');
+  grid.innerHTML = '';
+  STATE.material.matcaps.forEach((m, i) => {
+    const tile = document.createElement('div');
+    tile.className = 'matcap-tile' + (STATE.material.matcapIndex === i ? ' active' : '');
+    tile.title = m.name;
+    tile.style.backgroundImage = `url(${m.canvas.toDataURL()})`;
+    tile.addEventListener('click', ()=>{
+      STATE.material.matcapIndex = i;
+      STATE.material.source = 'matcap';
+      $$('#mat-source button').forEach(b=>b.classList.toggle('active', b.dataset.v === 'matcap'));
+      buildMatcapGrid();
+      STATE.needsRedraw = true;
+    });
+    grid.appendChild(tile);
+  });
+  const add = document.createElement('div');
+  add.className = 'matcap-tile add';
+  add.innerHTML = '+';
+  add.title = 'Load custom matcap';
+  add.addEventListener('click', ()=>{
+    const inp = document.createElement('input');
+    inp.type='file'; inp.accept='image/*';
+    inp.onchange = ()=>{ const f = inp.files[0]; if (f) loadMatcapFile(f); };
+    inp.click();
+  });
+  grid.appendChild(add);
+}
+buildMatcapGrid();
+
+function loadMatcapFile(file){
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = ()=>{
+    URL.revokeObjectURL(url);
+    // draw to a 256 canvas (clip to circle)
+    const s = 256;
+    const c = document.createElement('canvas'); c.width=c.height=s;
+    const ctx = c.getContext('2d');
+    ctx.save();
+    ctx.beginPath(); ctx.arc(s/2,s/2,s/2,0,Math.PI*2); ctx.clip();
+    // cover-fit
+    const ia = img.width/img.height;
+    let dw=s, dh=s, dx=0, dy=0;
+    if (ia > 1){ dw = s*ia; dx = (s-dw)/2; }
+    else { dh = s/ia; dy = (s-dh)/2; }
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
+    const tex = makeTextureFromImage(c);
+    STATE.material.matcaps.push({ name: file.name, canvas: c, tex });
+    STATE.material.matcapIndex = STATE.material.matcaps.length - 1;
+    STATE.material.source = 'matcap';
+    $$('#mat-source button').forEach(b=>b.classList.toggle('active', b.dataset.v === 'matcap'));
+    buildMatcapGrid();
+    STATE.needsRedraw = true;
+    setStatus('matcap loaded');
+  };
+  img.src = url;
+}
+
+// HDRI / image loader (any image; we treat as equirect)
+$('#load-hdri').addEventListener('click', ()=> $('#hdri-input').click());
+$('#hdri-input').addEventListener('change', (e)=>{
+  const f = e.target.files[0]; if (!f) return;
+  loadHdriFile(f);
+});
+
+function loadHdriFile(file){
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = ()=>{
+    URL.revokeObjectURL(url);
+    if (STATE.material.hdriTex) gl.deleteTexture(STATE.material.hdriTex);
+    STATE.material.hdriTex = makeTextureFromImage(img);
+    STATE.material.hdriUploaded = true;
+    STATE.material.source = 'hdri';
+    $$('#mat-source button').forEach(b=>b.classList.toggle('active', b.dataset.v === 'hdri'));
+    STATE.needsRedraw = true;
+    setStatus('environment loaded');
+  };
+  img.src = url;
+}
+
+// drag-and-drop
+window.addEventListener('dragenter', e => { e.preventDefault(); $('#dropzone').classList.add('visible'); });
+$('#dropzone').addEventListener('dragover',  e => { e.preventDefault(); });
+$('#dropzone').addEventListener('dragleave', e => { e.preventDefault(); $('#dropzone').classList.remove('visible'); });
+$('#dropzone').addEventListener('drop', e => {
+  e.preventDefault(); $('#dropzone').classList.remove('visible');
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  // ask: matcap or hdri? simplification: default hdri unless square
+  const img = new Image();
+  img.onload = ()=>{
+    if (Math.abs(img.width - img.height) < 4) loadMatcapFile(f);
+    else loadHdriFile(f);
+  };
+  img.src = URL.createObjectURL(f);
+});
+
+// ---------------------------------------------------------------------
+// Camera
+// ---------------------------------------------------------------------
+async function startCamera(){
+  if (STATE.camera.enabled) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    const v = document.createElement('video');
+    v.playsInline = true; v.muted = true; v.autoplay = true;
+    v.srcObject = stream;
+    await v.play();
+    STATE.camera.video = v;
+    STATE.camera.stream = stream;
+    STATE.camera.enabled = true;
+    $('#status').classList.add('live');
+    setStatus('camera live');
+  } catch (err){
+    console.warn(err);
+    setStatus('camera denied');
+    STATE.material.source = 'matcap';
+    $$('#mat-source button').forEach(b=>b.classList.toggle('active', b.dataset.v === 'matcap'));
+  }
+}
+function stopCamera(){
+  if (STATE.camera.stream) STATE.camera.stream.getTracks().forEach(t=>t.stop());
+  STATE.camera.enabled = false; STATE.camera.video = null; STATE.camera.stream = null;
+  $('#status').classList.remove('live');
+}
+
+// ---------------------------------------------------------------------
+// Theme
+// ---------------------------------------------------------------------
+$('#theme-tog').addEventListener('click', ()=>{
+  const cur = document.documentElement.getAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+  STATE.needsRedraw = true;
+});
+
+// ---------------------------------------------------------------------
+// Clear / Undo
+// ---------------------------------------------------------------------
+function clearAll(){
+  STATE.strokes = [];
+  STATE.texts = [];
+  STATE.selectedTextId = null;
+  buildTextDom();
+  clearFBO(STATE.field);
+  STATE.needsRedraw = true;
+  setStatus('cleared');
+}
+$('#clear-btn').addEventListener('click', clearAll);
+
+function undo(){
+  if (!STATE.strokes.length) return;
+  const last = STATE.strokes.pop();
+  if (last.kind === 'text'){
+    STATE.texts = STATE.texts.filter(t => t.id !== last.id);
+    if (STATE.selectedTextId === last.id) STATE.selectedTextId = null;
+    buildTextDom();
+  }
+  STATE.needsFieldRebuild = true;
+  setStatus('undo');
+}
+$('#undo-btn').addEventListener('click', undo);
+
+// ---------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------
+const exportModal = $('#export-modal');
+$('#export-btn').addEventListener('click', ()=> exportModal.classList.add('visible'));
+$('#export-close').addEventListener('click', ()=> exportModal.classList.remove('visible'));
+exportModal.addEventListener('click', (e)=>{ if (e.target === exportModal) exportModal.classList.remove('visible'); });
+
+let exportRes = 1, exportBg = 'opaque';
+bindSeg('#export-res', v => exportRes = parseFloat(v));
+bindSeg('#export-bg',  v => exportBg = v);
+
+$('#export-go').addEventListener('click', ()=>{
+  doExport(exportRes, exportBg === 'transparent');
+});
+
+async function doExport(scale, transparent){
+  setStatus('exporting…');
+  const w = Math.floor(STATE.width  * STATE.pixelRatio * scale);
+  const h = Math.floor(STATE.height * STATE.pixelRatio * scale);
+
+  // create offscreen FBOs at target resolution
+  const fieldHi     = makeFBO(w, h);
+  const fieldHiTmp  = makeFBO(w, h);
+  const fieldHiBlur = makeFBO(w, h);
+  const dispHi      = makeRGBA8FBO(w, h);  // RGBA8 — safe for readPixels
+
+  // Inflate pixelRatio so renderStrokeSegment scales CSS-pixel positions correctly
+  const oldPR = STATE.pixelRatio;
+  STATE.pixelRatio = oldPR * scale;
+  rebuildField(fieldHi);
+  STATE.pixelRatio = oldPR;
+
+  // blur the hi-res field
+  doBlurPass(fieldHi, fieldHiTmp, fieldHiBlur, STATE.material.blurAmount * scale);
+
+  // render display pass into dispHi
+  present(dispHi, { width: w, height: h, transparentBg: transparent, fieldTex: fieldHiBlur.tex });
+
+  // read pixels back (WebGL y is flipped relative to canvas)
+  const pixels = new Uint8Array(w * h * 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, dispHi.fbo);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  // flip Y rows
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(w, h);
+  for (let row = 0; row < h; row++){
+    const src = (h - 1 - row) * w * 4;
+    const dst = row * w * 4;
+    imgData.data.set(pixels.subarray(src, src + w * 4), dst);
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  canvas.toBlob((blob)=>{
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `liquid-chrome_${w}x${h}_${transparent ? 'alpha':'solid'}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    setStatus('saved');
+  }, 'image/png');
+
+  // cleanup temporary FBOs
+  [fieldHi, fieldHiTmp, fieldHiBlur, dispHi].forEach(fbo => {
+    gl.deleteFramebuffer(fbo.fbo); gl.deleteTexture(fbo.tex);
+  });
+  exportModal.classList.remove('visible');
+}
+
+// ---------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------
+let statusTimer = null;
+function setStatus(s){
+  $('#status-txt').textContent = s;
+  if (statusTimer) clearTimeout(statusTimer);
+  statusTimer = setTimeout(()=> $('#status-txt').textContent = STATE.camera.enabled ? 'camera live' : 'ready', 1800);
+}
+
+// ---------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------
+resize();
+loop();
+setStatus('ready');
+
+// mobile: show inspector toggle button only on mobile; on desktop inspector always visible
+function applyMobile(){
+  const isMob = window.innerWidth <= 720;
+  $('#inspector-tog').style.display = isMob ? 'flex' : 'none';
+  // on desktop: remove any display:none that media-query doesn't apply
+  // on mobile: start closed (user taps toggle to open)
+  if (!isMob){
+    // ensure no leftover visibility class interferes on desktop
+    $('#inspector').style.display = '';
+  }
+}
+applyMobile();
+window.addEventListener('resize', applyMobile);
+$('#inspector-tog').addEventListener('click', ()=>{
+  $('#inspector').classList.toggle('visible');
+});
+
+</script>
+</body>
+</html>
